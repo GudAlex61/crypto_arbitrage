@@ -29,7 +29,7 @@ export abstract class BaseExchange {
   }
 
   public getPrice(symbol: string): number | undefined {
-    return this.prices.get(symbol);
+    return this.prices.get(symbol.replace('/', ''));
   }
 
   protected updatePrice(symbol: string, price: number) {

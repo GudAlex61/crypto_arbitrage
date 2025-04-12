@@ -78,6 +78,7 @@ class ArbitrageBot {
   }
 
   private async checkArbitrageOpportunities() {
+    console.log('Checking arbitrage');
     const prices: PriceData[] = [];
 
     for (const [exchangeName, exchange] of this.exchanges) {
