@@ -1,5 +1,5 @@
 import WebSocket from 'ws';
-import { BaseExchange } from './base';
+import { BaseExchange } from '../base.ts';
 
 export class MEXCExchange extends BaseExchange {
   private pendingSubscriptions: string[] = [];
@@ -45,7 +45,7 @@ export class MEXCExchange extends BaseExchange {
       const batch = formattedSymbols.slice(i, i + this.BATCH_SIZE);
       const subscribeMsg = {
         method: 'SUBSCRIPTION',
-        params: batch.map(symbol => `spot@public.ticker.v3.${symbol}`),
+        params: batch.map(symbol => `spot@public.kline.v3.api@${symbol.toUpperCase()}@Min1`),
       };
 
       try {
@@ -73,9 +73,10 @@ export class MEXCExchange extends BaseExchange {
   handleMessage(message: Buffer): void {
     try {
       const data = JSON.parse(message.toString());
-      if (data.c === 'spot@public.ticker.v3') {
-        const symbol = data.d.symbol;
-        const price = parseFloat(data.d.c);
+      if (data.c?.startsWith('spot@public.kline.v3.api@')) {
+        // console.log(`Mexc success message `, data)
+        const symbol = data.s;
+        const price = parseFloat(data.d.k.c);
         this.updatePrice(symbol, price);
       } else {
         console.error('Error handling MEXC message:', message.toString());
