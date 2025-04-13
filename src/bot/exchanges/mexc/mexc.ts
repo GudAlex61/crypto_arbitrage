@@ -1,9 +1,12 @@
 import WebSocket from 'ws';
 import { BaseExchange } from '../base.ts';
+import {PushDataV3ApiWrapper, PushDataV3ApiWrapperSchema} from "./proto/pb/PushDataV3ApiWrapper_pb";
+import {fromBinary} from "@bufbuild/protobuf";
+import {PublicSpotKlineV3Api} from "./proto/pb/PublicSpotKlineV3Api_pb.ts";
 
 export class MEXCExchange extends BaseExchange {
   private pendingSubscriptions: string[] = [];
-  private readonly BATCH_SIZE = 10; // Maximum symbols per subscription request
+  private readonly BATCH_SIZE = 20; // Maximum symbols per subscription request
 
   connect(): void {
     this.ws = new WebSocket(this.config.wsEndpoint);
@@ -45,12 +48,12 @@ export class MEXCExchange extends BaseExchange {
       const batch = formattedSymbols.slice(i, i + this.BATCH_SIZE);
       const subscribeMsg = {
         method: 'SUBSCRIPTION',
-        params: batch.map(symbol => `spot@public.kline.v3.api@${symbol.toUpperCase()}@Min1`),
+        params: batch.map(symbol => `spot@public.kline.v3.api.pb@${symbol.toUpperCase()}@Min1`),
       };
 
       try {
         this.ws.send(JSON.stringify(subscribeMsg));
-        console.log(`Subscribed to batch of ${batch.length} symbols on MEXC (${i + 1}-${Math.min(i + this.BATCH_SIZE, formattedSymbols.length)} of ${formattedSymbols.length})`);
+        console.log(`${i}: Subscribed to batch of ${batch.length} symbols on MEXC (${i + 1}-${Math.min(i + this.BATCH_SIZE, formattedSymbols.length)} of ${formattedSymbols.length})`);
 
         // Add a small delay between batches to avoid rate limiting
         if (i + this.BATCH_SIZE < formattedSymbols.length) {
@@ -72,17 +75,21 @@ export class MEXCExchange extends BaseExchange {
 
   handleMessage(message: Buffer): void {
     try {
-      const data = JSON.parse(message.toString());
-      if (data.c?.startsWith('spot@public.kline.v3.api@')) {
-        // console.log(`Mexc success message `, data)
-        const symbol = data.s;
-        const price = parseFloat(data.d.k.c);
+      const resp: PushDataV3ApiWrapper = fromBinary(PushDataV3ApiWrapperSchema, message);
+      if (resp.body.case === 'publicSpotKline') {
+        const symbol = resp.symbol as string;
+        const price = parseFloat((resp.body.value as PublicSpotKlineV3Api).closingPrice);
         this.updatePrice(symbol, price);
       } else {
-        console.error('Error handling MEXC message:', message.toString());
+        console.error('Wrong MEXC message:', resp);
       }
     } catch (error) {
-      console.error('Error handling MEXC message:', error);
+      try {
+        const jsonData = JSON.parse(message.toString());
+        console.log(jsonData);
+      } catch (jsonError) {
+        console.error('Error handling MEXC message:', error);
+      }
     }
   }
 

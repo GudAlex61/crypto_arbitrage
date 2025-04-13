@@ -1,6 +1,6 @@
 import { BinanceExchange } from './exchanges/binance';
 import { BybitExchange } from './exchanges/bybit';
-import { MEXCExchange } from './exchanges/mexc';
+import { MEXCExchange } from './exchanges/mexc/mexc.ts';
 import { ArbitrageAnalyzer } from './arbitrage';
 import { TelegramService } from './services/telegram';
 import { EXCHANGES, PRICE_UPDATE_INTERVAL } from './config';

@@ -9,16 +9,16 @@ export const EXCHANGES: ExchangeConfig[] = [
     wsEndpoint: 'wss://stream.binance.com:9443/ws',
     restEndpoint: 'https://api.binance.com',
   },
-  {
-    name: 'Bybit',
-    wsEndpoint: 'wss://stream.bybit.com/v5/public/spot',
-    restEndpoint: 'https://api.bybit.com',
-  },
   // {
-  //   name: 'MEXC',
-  //   wsEndpoint: 'wss://wbs.mexc.com/ws',
-  //   restEndpoint: 'https://api.mexc.com',
+  //   name: 'Bybit',
+  //   wsEndpoint: 'wss://stream.bybit.com/v5/public/spot',
+  //   restEndpoint: 'https://api.bybit.com',
   // },
+  {
+    name: 'MEXC',
+    wsEndpoint: 'wss://wbs-api.mexc.com/ws',
+    restEndpoint: 'https://api.mexc.com',
+  },
 ];
 
 export const MIN_PROFIT_PERCENTAGE = 0.7; // 0.5%

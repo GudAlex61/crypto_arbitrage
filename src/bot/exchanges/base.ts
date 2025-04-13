@@ -11,7 +11,7 @@ export abstract class BaseExchange {
 
   abstract connect(): void;
   abstract subscribeToSymbols(symbols: string[]): void;
-  abstract handleMessage(message: string): void;
+  abstract handleMessage(message: Buffer): void;
   abstract fetchTradingPairs(): Promise<string[]>;
 
   protected async makeRequest(endpoint: string, method = 'GET', params = {}) {
