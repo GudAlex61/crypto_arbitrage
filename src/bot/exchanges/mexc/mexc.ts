@@ -5,71 +5,120 @@ import {fromBinary} from "@bufbuild/protobuf";
 import {PublicSpotKlineV3Api} from "./proto/pb/PublicSpotKlineV3Api_pb.ts";
 
 export class MEXCExchange extends BaseExchange {
+  private connections: WebSocket[] = [];
   private pendingSubscriptions: string[] = [];
-  private readonly BATCH_SIZE = 20; // Maximum symbols per subscription request
+  private readonly BATCH_SIZE = 20; // Maximum symbols per WebSocket connection
+  private readonly MAX_RECONNECT_ATTEMPTS = 3;
 
   connect(): void {
-    this.ws = new WebSocket(this.config.wsEndpoint);
 
-    this.ws.on('open', () => {
-      console.log('Connected to MEXC WebSocket');
-      if (this.pendingSubscriptions.length > 0) {
-        this.sendSubscriptions(this.pendingSubscriptions);
-        this.pendingSubscriptions = [];
-      }
-    });
+    if (this.pendingSubscriptions.length > 0) {
+      this.sendSubscriptions(this.pendingSubscriptions);
+      this.pendingSubscriptions = [];
+    }
+  }
 
-    this.ws.on('message', (data: Buffer) => {
-      this.handleMessage(data);
-    });
+  private createConnection(): WebSocket {
+    const ws = new WebSocket(this.config.wsEndpoint);
 
-    this.ws.on('error', (error) => {
+    ws.on('error', (error) => {
       console.error('MEXC WebSocket error:', error);
     });
 
-    this.ws.on('close', () => {
+    ws.on('close', () => {
       console.log('MEXC WebSocket connection closed. Attempting to reconnect...');
-      setTimeout(() => this.connect(), 5000);
+      this.handleReconnect(ws);
     });
+
+    return ws;
   }
 
-  private async sendSubscriptions(symbols: string[]): Promise<void> {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      console.log('WebSocket not ready, queueing subscriptions');
+  private async handleReconnect(ws: WebSocket, attempt = 0) {
+    if (attempt >= this.MAX_RECONNECT_ATTEMPTS) {
+      console.error('Max reconnection attempts reached for MEXC WebSocket');
       return;
     }
 
+    const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
+    await new Promise(resolve => setTimeout(resolve, delay));
+
+    const index = this.connections.indexOf(ws);
+    if (index !== -1) {
+      const newWs = this.createConnection();
+      this.connections[index] = newWs;
+
+      // Wait for connection to be established
+      await new Promise<void>(resolve => {
+        newWs.once('open', () => {
+          // Resubscribe to the batch that was assigned to this connection
+          const startIndex = index * this.BATCH_SIZE;
+          const batch = this.pendingSubscriptions.slice(startIndex, startIndex + this.BATCH_SIZE);
+          if (batch.length > 0) {
+            this.subscribeBatch(newWs, batch, index + 1);
+          }
+          resolve();
+        });
+      });
+    }
+  }
+
+  private async sendSubscriptions(symbols: string[]): Promise<void> {
     const formattedSymbols = symbols.map(symbol =>
-        symbol.replace('/', '').toLowerCase()
+        symbol.replace('/', '').toUpperCase()
     );
 
-    // Split symbols into batches
-    for (let i = 0; i < formattedSymbols.length; i += this.BATCH_SIZE) {
-      const batch = formattedSymbols.slice(i, i + this.BATCH_SIZE);
-      const subscribeMsg = {
-        method: 'SUBSCRIPTION',
-        params: batch.map(symbol => `spot@public.kline.v3.api.pb@${symbol.toUpperCase()}@Min1`),
-      };
+    // Store all symbols for potential resubscription
+    this.pendingSubscriptions = formattedSymbols;
 
-      try {
-        this.ws.send(JSON.stringify(subscribeMsg));
-        console.log(`${i}: Subscribed to batch of ${batch.length} symbols on MEXC (${i + 1}-${Math.min(i + this.BATCH_SIZE, formattedSymbols.length)} of ${formattedSymbols.length})`);
+    // Calculate total number of connections needed
+    const totalConnections = Math.ceil(formattedSymbols.length / this.BATCH_SIZE);
 
-        // Add a small delay between batches to avoid rate limiting
-        if (i + this.BATCH_SIZE < formattedSymbols.length) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-      } catch (error) {
-        console.error('Error sending subscription message:', error);
+    // Create separate WebSocket connections for each batch
+    for (let i = 0; i < totalConnections; i++) {
+      const ws = this.createConnection();
+      this.connections.push(ws);
+
+      // Wait for connection to be established
+      await new Promise<void>(resolve => {
+        ws.once('open', () => {
+          const startIndex = i * this.BATCH_SIZE;
+          const batch = formattedSymbols.slice(startIndex, startIndex + this.BATCH_SIZE);
+          this.subscribeBatch(ws, batch, i + 1);
+          resolve();
+        });
+      });
+
+      // Add delay between creating connections to avoid rate limiting
+      if (i < totalConnections - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
+    }
+  }
+
+  private subscribeBatch(ws: WebSocket, symbols: string[], batchNumber: number): void {
+    const subscribeMsg = {
+      method: 'SUBSCRIPTION',
+      params: symbols.map(symbol => `spot@public.kline.v3.api.pb@${symbol}@Min1`),
+    };
+
+    try {
+      ws.send(JSON.stringify(subscribeMsg));
+      console.log(`MEXC WebSocket ${batchNumber}: Subscribed to ${symbols.length} symbols`);
+
+      // Set up message handler for this connection
+      ws.on('message', (data: string) => {
+        this.handleMessage(data);
+      });
+    } catch (error) {
+      console.error(`Error sending subscription message for batch ${batchNumber}:`, error);
     }
   }
 
   async subscribeToSymbols(symbols: string[]): Promise<void> {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      this.pendingSubscriptions = symbols;
-      return;
-    }
+    // Clean up existing connections
+    this.disconnect();
+    this.connections = [];
+
     await this.sendSubscriptions(symbols);
   }
 
@@ -87,6 +136,7 @@ export class MEXCExchange extends BaseExchange {
       try {
         const jsonData = JSON.parse(message.toString());
         console.log(jsonData);
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
       } catch (jsonError) {
         console.error('Error handling MEXC message:', error);
       }
@@ -130,5 +180,14 @@ export class MEXCExchange extends BaseExchange {
     }
 
     return [];
+  }
+
+  public disconnect() {
+    for (const ws of this.connections) {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
+    }
+    this.connections = [];
   }
 }

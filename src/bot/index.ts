@@ -1,8 +1,9 @@
 import { BinanceExchange } from './exchanges/binance';
 import { BybitExchange } from './exchanges/bybit';
-import { MEXCExchange } from './exchanges/mexc/mexc.ts';
+import { MEXCExchange } from './exchanges/mexc/mexc';
 import { ArbitrageAnalyzer } from './arbitrage';
 import { TelegramService } from './services/telegram';
+import { WebSocketService } from './services/websocket';
 import { EXCHANGES, PRICE_UPDATE_INTERVAL } from './config';
 import { PriceData } from './types';
 
@@ -10,11 +11,15 @@ class ArbitrageBot {
   private exchanges: Map<string, BinanceExchange | BybitExchange | MEXCExchange> = new Map();
   private analyzer: ArbitrageAnalyzer;
   private telegramService: TelegramService;
+  private webSocketService: WebSocketService;
   private commonTradingPairs: Set<string> = new Set();
+  private lastLogTime: Map<string, number> = new Map();
+  private readonly LOG_COOLDOWN = 5 * 60 * 1000; // 5 minutes in milliseconds
 
   constructor() {
     this.analyzer = new ArbitrageAnalyzer();
     this.telegramService = new TelegramService();
+    this.webSocketService = new WebSocketService(3001);
     this.initializeExchanges();
   }
 
@@ -74,11 +79,18 @@ class ArbitrageBot {
       this.checkArbitrageOpportunities();
     }, PRICE_UPDATE_INTERVAL);
 
-    console.log('Arbitrage bot started with Telegram notifications enabled');
+    console.log('Arbitrage bot started with WebSocket and Telegram notifications enabled');
+  }
+
+  private isOnCooldown(symbol: string): boolean {
+    const lastTime = this.lastLogTime.get(symbol);
+    if (!lastTime) return false;
+
+    const timeSinceLastLog = Date.now() - lastTime;
+    return timeSinceLastLog < this.LOG_COOLDOWN;
   }
 
   private async checkArbitrageOpportunities() {
-    console.log('Checking arbitrage');
     const prices: PriceData[] = [];
 
     for (const [exchangeName, exchange] of this.exchanges) {
@@ -96,16 +108,25 @@ class ArbitrageBot {
     }
 
     const opportunities = this.analyzer.findOpportunities(prices);
-    
-    for (const opportunity of opportunities) {
-      console.log('Arbitrage Opportunity Found!');
-      console.log(`Symbol: ${opportunity.symbol}`);
-      console.log(`Buy from ${opportunity.buyExchange} at ${opportunity.buyPrice}`);
-      console.log(`Sell on ${opportunity.sellExchange} at ${opportunity.sellPrice}`);
-      console.log(`Potential profit: ${opportunity.profitPercentage.toFixed(2)}%`);
-      console.log('-------------------');
 
-      // Send notification to Telegram
+    for (const opportunity of opportunities) {
+      // Broadcast to WebSocket clients regardless of cooldown
+      this.webSocketService.broadcastOpportunity(opportunity);
+
+      // Console logging with cooldown
+      if (!this.isOnCooldown(opportunity.symbol)) {
+        console.log('Arbitrage Opportunity Found!');
+        console.log(`Symbol: ${opportunity.symbol}`);
+        console.log(`Buy from ${opportunity.buyExchange} at ${opportunity.buyPrice}`);
+        console.log(`Sell on ${opportunity.sellExchange} at ${opportunity.sellPrice}`);
+        console.log(`Potential profit: ${opportunity.profitPercentage.toFixed(2)}%`);
+        console.log('-------------------');
+
+        // Update last log time for this symbol
+        this.lastLogTime.set(opportunity.symbol, Date.now());
+      }
+
+      // Send notification to Telegram (it has its own cooldown mechanism)
       await this.telegramService.sendOpportunityAlert(opportunity);
     }
   }

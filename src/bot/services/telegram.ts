@@ -62,7 +62,7 @@ export class TelegramService {
   async sendOpportunityAlert(opportunity: ArbitrageOpportunity): Promise<void> {
     // Check if the symbol is on cooldown
     if (this.isOnCooldown(opportunity.symbol)) {
-      console.log(`Skipping notification for ${opportunity.symbol} - on cooldown`);
+      // console.log(`Skipping notification for ${opportunity.symbol} - on cooldown`);
       return;
     }
 

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Arbitrage Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/handlebars@latest/dist/handlebars.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <header class="mb-8">
+            <h1 class="text-4xl font-bold text-center mb-2">Crypto Arbitrage Dashboard</h1>
+            <p class="text-gray-400 text-center" id="connection-status">Connecting to server...</p>
+        </header>
+
+        <div class="bg-gray-800 rounded-lg shadow-lg p-6 mb-8">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-semibold">Live Opportunities</h2>
+                <div class="flex items-center space-x-4">
+                    <span class="text-sm text-gray-400">Last update: <span id="last-update">Never</span></span>
+                    <span class="text-sm text-gray-400">Total opportunities: <span id="opportunity-count">0</span></span>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full">
+                    <thead>
+                        <tr class="text-left text-gray-400 border-b border-gray-700">
+                            <th class="py-3 px-4">Symbol</th>
+                            <th class="py-3 px-4">Buy Exchange</th>
+                            <th class="py-3 px-4">Buy Price</th>
+                            <th class="py-3 px-4">Sell Exchange</th>
+                            <th class="py-3 px-4">Sell Price</th>
+                            <th class="py-3 px-4">Profit %</th>
+                            <th class="py-3 px-4">Time</th>
+                        </tr>
+                    </thead>
+                    <tbody id="opportunities-table">
+                        <!-- Opportunities will be inserted here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script id="opportunity-template" type="text/x-handlebars-template">
+        <tr class="border-b border-gray-700 opportunity-row {{#if isNew}}new-opportunity{{/if}}" data-symbol="{{symbol}}">
+            <td class="py-3 px-4 font-medium">{{symbol}}</td>
+            <td class="py-3 px-4">{{buyExchange}}</td>
+            <td class="py-3 px-4">${{formatPrice buyPrice}}</td>
+            <td class="py-3 px-4">{{sellExchange}}</td>
+            <td class="py-3 px-4">${{formatPrice sellPrice}}</td>
+            <td class="py-3 px-4 font-medium text-green-400">{{formatProfit profitPercentage}}%</td>
+            <td class="py-3 px-4 text-gray-400">{{formatTime timestamp}}</td>
+        </tr>
+    </script>
+
+    <script src="/app.js"></script>
+</body>
+</html>

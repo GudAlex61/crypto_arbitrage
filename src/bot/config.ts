@@ -21,6 +21,25 @@ export const EXCHANGES: ExchangeConfig[] = [
   },
 ];
 
+// Token name mappings between exchanges
+export const TOKEN_MAPPINGS: Record<string, Record<string, string>> = {
+  'Binance': {
+    'QI': 'BENQI',
+    'PEOPLE': 'CONSTITUTION',
+    'BTTC': 'BTT',
+    // Add more mappings as needed
+  },
+  'MEXC': {
+    'BENQI': 'QI',
+    'CONSTITUTION': 'PEOPLE',
+    'BTT': 'BTTC',
+    // Add more mappings as needed
+  },
+  'Bybit': {
+    // Add Bybit specific mappings if needed
+  }
+};
+
 export const MIN_PROFIT_PERCENTAGE = 0.7; // 0.5%
 export const PRICE_UPDATE_INTERVAL = 1000; // 1 second
 

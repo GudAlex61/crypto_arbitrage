@@ -1,0 +1,22 @@
+@keyframes highlight {
+    0% {
+        background-color: rgba(34, 197, 94, 0.2);
+    }
+    100% {
+        background-color: transparent;
+    }
+}
+
+.new-opportunity {
+    animation: highlight 2s ease-out 1 forwards;
+}
+
+.opportunity-row:hover {
+    background-color: rgba(55, 65, 81, 0.5);
+    transition: background-color 0.2s ease;
+}
+
+/* Smooth transitions for updates */
+.opportunity-row td {
+    transition: all 0.3s ease;
+}
