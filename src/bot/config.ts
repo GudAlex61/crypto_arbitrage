@@ -9,11 +9,11 @@ export const EXCHANGES: ExchangeConfig[] = [
     wsEndpoint: 'wss://stream.binance.com:9443/ws',
     restEndpoint: 'https://api.binance.com',
   },
-  // {
-  //   name: 'Bybit',
-  //   wsEndpoint: 'wss://stream.bybit.com/v5/public/spot',
-  //   restEndpoint: 'https://api.bybit.com',
-  // },
+  {
+    name: 'Bybit',
+    wsEndpoint: 'wss://stream.bybit.com/v5/public/spot',
+    restEndpoint: 'https://api.bybit.com',
+  },
   {
     name: 'MEXC',
     wsEndpoint: 'wss://wbs-api.mexc.com/ws',

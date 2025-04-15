@@ -4,11 +4,15 @@ import { ArbitrageOpportunity } from '../types';
 
 export class TelegramService {
   private bot: TelegramBot;
-  private messageQueue: Array<{ message: string; timestamp: number }> = [];
+  private messageQueue: Array<{ message: string; timestamp: number; retryCount: number }> = [];
   private isProcessingQueue = false;
-  private readonly RATE_LIMIT_DELAY = 2000; // 2 seconds between messages
+  private readonly RATE_LIMIT_DELAY = 3000; // 3 seconds between messages
+  private readonly MAX_RETRIES = 3;
+  private readonly MAX_QUEUE_SIZE = 1000;
   private readonly NOTIFICATION_COOLDOWN = 5 * 60 * 1000; // 5 minutes in milliseconds
   private lastNotificationTime: Map<string, number> = new Map();
+  private lastErrorTime: number = 0;
+  private errorBackoffDelay: number = 3000;
 
   constructor() {
     if (!TELEGRAM_CONFIG.botToken) {
@@ -33,19 +37,47 @@ export class TelegramService {
       return;
     }
 
+    // Check if we need to wait due to rate limiting
+    const now = Date.now();
+    if (now - this.lastErrorTime < this.errorBackoffDelay) {
+      return;
+    }
+
     this.isProcessingQueue = true;
 
     try {
-      const { message } = this.messageQueue[0];
+      const { message, retryCount } = this.messageQueue[0];
       await this.bot.sendMessage(TELEGRAM_CONFIG.chatId, message, {
         parse_mode: 'HTML',
         disable_web_page_preview: true
       });
 
+      // Reset error backoff on successful send
+      this.errorBackoffDelay = 3000;
+      this.lastErrorTime = 0;
+
       // Remove the sent message from queue
       this.messageQueue.shift();
-    } catch (error) {
-      console.error('Error sending Telegram message:', error);
+    } catch (error: any) {
+      console.error('Error sending Telegram message:', error.message);
+      
+      if (error.response?.statusCode === 429) {
+        // Handle rate limiting
+        this.lastErrorTime = Date.now();
+        this.errorBackoffDelay = Math.min(this.errorBackoffDelay * 2, 30000); // Max 30 seconds backoff
+        
+        const currentMessage = this.messageQueue[0];
+        if (currentMessage.retryCount < this.MAX_RETRIES) {
+          currentMessage.retryCount++;
+          console.log(`Retrying message after ${this.errorBackoffDelay}ms delay (attempt ${currentMessage.retryCount}/${this.MAX_RETRIES})`);
+        } else {
+          console.log('Max retries reached, dropping message');
+          this.messageQueue.shift();
+        }
+      } else {
+        // For other errors, just drop the message
+        this.messageQueue.shift();
+      }
     } finally {
       this.isProcessingQueue = false;
     }
@@ -66,15 +98,22 @@ export class TelegramService {
       return;
     }
 
+    // Check queue size
+    if (this.messageQueue.length >= this.MAX_QUEUE_SIZE) {
+      console.log('Telegram queue is full, dropping message');
+      return;
+    }
+
     const message = this.formatOpportunityMessage(opportunity);
 
     // Update last notification time for this symbol
     this.lastNotificationTime.set(opportunity.symbol, Date.now());
 
-    // Add message to queue with timestamp
+    // Add message to queue with timestamp and retry count
     this.messageQueue.push({
       message,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      retryCount: 0
     });
   }
 

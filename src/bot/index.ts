@@ -69,9 +69,12 @@ class ArbitrageBot {
     await this.fetchAllTradingPairs();
 
     // Connect to all exchanges
-    for (const exchange of this.exchanges.values()) {
+    for (const [exchangeName, exchange] of this.exchanges) {
+      console.log(`Connecting to ${exchangeName}...`);
       exchange.connect();
-      exchange.subscribeToSymbols(Array.from(this.commonTradingPairs));
+      const pairs = Array.from(this.commonTradingPairs);
+      console.log(`Subscribing to ${pairs.length} pairs on ${exchangeName}`);
+      exchange.subscribeToSymbols(pairs);
     }
 
     // Start monitoring prices
@@ -92,8 +95,10 @@ class ArbitrageBot {
 
   private async checkArbitrageOpportunities() {
     const prices: PriceData[] = [];
+    const exchangePrices = new Map<string, number>();
 
     for (const [exchangeName, exchange] of this.exchanges) {
+      let exchangePriceCount = 0;
       for (const symbol of this.commonTradingPairs) {
         const price = exchange.getPrice(symbol);
         if (price) {
@@ -103,8 +108,16 @@ class ArbitrageBot {
             exchange: exchangeName,
             timestamp: Date.now(),
           });
+          exchangePriceCount++;
         }
       }
+      exchangePrices.set(exchangeName, exchangePriceCount);
+    }
+
+    // Log price update status for each exchange
+    console.log('Price update status:');
+    for (const [exchangeName, count] of exchangePrices) {
+      console.log(`${exchangeName}: ${count} pairs with prices`);
     }
 
     const opportunities = this.analyzer.findOpportunities(prices);

@@ -4,6 +4,8 @@ import {BLACKLIST} from "../config.ts";
 
 export class BinanceExchange extends BaseExchange {
   private pendingSubscriptions: string[] = [];
+  private readonly BATCH_SIZE = 20; // Maximum symbols per subscription request
+  private readonly MAX_RECONNECT_ATTEMPTS = 3;
 
   connect(): void {
     this.ws = new WebSocket(this.config.wsEndpoint);
@@ -17,7 +19,7 @@ export class BinanceExchange extends BaseExchange {
       }
     });
 
-    this.ws.on('message', (data: string) => {
+    this.ws.on('message', (data: Buffer) => {
       this.handleMessage(data);
     });
 
@@ -31,49 +33,69 @@ export class BinanceExchange extends BaseExchange {
     });
   }
 
-  private sendSubscriptions(symbols: string[]): void {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      console.log('WebSocket not ready, queueing subscriptions');
-      return;
-    }
+  private async sendSubscriptions(symbols: string[]): Promise<void> {
+    const formattedSymbols = symbols.map(symbol =>
+      symbol.toLowerCase().replace('/', '')
+    );
 
-    const subscriptions = symbols.map(symbol => {
-      const formattedSymbol = symbol.toLowerCase().replace('/', '');
-      return `${formattedSymbol}@ticker`;
-    });
+    // Store all symbols for potential resubscription
+    this.pendingSubscriptions = formattedSymbols;
 
-    const subscribeMsg = {
-      method: 'SUBSCRIBE',
-      params: subscriptions,
-      id: 1,
-    };
+    // Calculate total number of batches
+    const totalBatches = Math.ceil(formattedSymbols.length / this.BATCH_SIZE);
+    console.log(`Starting subscription of ${formattedSymbols.length} symbols in ${totalBatches} batches`);
 
-    try {
-      // console.log(`Sending ws data: ${JSON.stringify(subscribeMsg)}`)
-      this.ws.send(JSON.stringify(subscribeMsg));
-      console.log(`Subscribed to ${symbols.length} symbols on Binance`);
-    } catch (error) {
-      console.error('Error sending subscription message:', error);
+    // Process symbols in batches
+    for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+      const startIndex = batchIndex * this.BATCH_SIZE;
+      const endIndex = Math.min(startIndex + this.BATCH_SIZE, formattedSymbols.length);
+      const batch = formattedSymbols.slice(startIndex, endIndex);
+      
+      if (batch.length === 0) continue;
+
+      const subscriptions = batch.map(symbol => `${symbol}@ticker`);
+
+      const subscribeMsg = {
+        method: 'SUBSCRIBE',
+        params: subscriptions,
+        id: batchIndex + 1,
+      };
+
+      try {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify(subscribeMsg));
+          console.log(`Subscribed to batch ${batchIndex + 1}/${totalBatches} (${batch.length} symbols)`);
+          
+          // Add delay between batches to avoid rate limiting
+          if (batchIndex < totalBatches - 1) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        }
+      } catch (error) {
+        console.error(`Error sending subscription batch ${batchIndex + 1}:`, error);
+      }
     }
   }
 
-  subscribeToSymbols(symbols: string[]): void {
+  async subscribeToSymbols(symbols: string[]): Promise<void> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       // Store subscriptions to be sent when connection is ready
       this.pendingSubscriptions = symbols;
       return;
     }
-    this.sendSubscriptions(symbols);
+    await this.sendSubscriptions(symbols);
   }
 
-  handleMessage(message: string): void {
+  handleMessage(message: Buffer): void {
     // console.log(`Binance websocket data: ${message}`)
     try {
-      const data = JSON.parse(message);
+      const data = JSON.parse(message.toString());
       if (data.e === '24hrTicker') {
         const symbol = data.s;
         const price = parseFloat(data.c);
         this.updatePrice(symbol, price);
+      } else {
+        console.error('Binance WebSocket error:', message.toString());
       }
     } catch (error) {
       console.error('Error handling Binance message:', error);
