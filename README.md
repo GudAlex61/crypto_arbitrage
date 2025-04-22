@@ -2,6 +2,9 @@
 
 A real-time cryptocurrency arbitrage bot that monitors price differences across multiple exchanges (Binance, Bybit, and MEXC) for both spot and futures markets.
 
+![Crypto Arbitrage Dashboard](https://github.com/user-attachments/assets/5d7169e1-946a-4edb-b717-513fe70bb7b4)
+
+
 ## Features
 
 - Real-time price monitoring across multiple exchanges
@@ -33,7 +36,7 @@ A real-time cryptocurrency arbitrage bot that monitors price differences across 
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/crypto-arbitrage-bot.git
+git clone https://github.com/ramilexe/crypto-arbitrage-bot.git
 cd crypto-arbitrage-bot
 ```
 
@@ -58,7 +61,7 @@ docker-compose up -d
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/crypto-arbitrage-bot.git
+git clone https://github.com/ramilexe/crypto-arbitrage-bot.git
 cd crypto-arbitrage-bot
 ```
 
@@ -104,7 +107,9 @@ The bot can be configured through the following files:
 
 ## Web Dashboard
 
-The bot includes a web dashboard that can be accessed at `http://localhost:3001`. The dashboard provides:
+The bot includes a web dashboard that can be accessed at `http://localhost:3001`. 
+
+The dashboard provides:
 
 - Real-time arbitrage opportunities
 - Separate views for spot and futures markets
