@@ -92,10 +92,10 @@ class ArbitrageBot {
       console.log(`Connecting to ${exchangeName}...`);
       exchange.connect();
       
-      // // Subscribe to spot pairs
-      // const spotPairs = Array.from(this.commonTradingPairs);
-      // console.log(`Subscribing to ${spotPairs.length} spot pairs on ${exchangeName}`);
-      // await exchange.subscribeToSymbols(spotPairs, MarketType.SPOT);
+      // Subscribe to spot pairs
+      const spotPairs = Array.from(this.commonTradingPairs);
+      console.log(`Subscribing to ${spotPairs.length} spot pairs on ${exchangeName}`);
+      await exchange.subscribeToSymbols(spotPairs, MarketType.SPOT);
       
       // Subscribe to futures pairs
       const futuresPairs = Array.from(this.commonFuturesPairs);
@@ -105,7 +105,7 @@ class ArbitrageBot {
 
     // Start monitoring prices
     setInterval(() => {
-      // this.checkArbitrageOpportunities(MarketType.SPOT);
+      this.checkArbitrageOpportunities(MarketType.SPOT);
       this.checkArbitrageOpportunities(MarketType.FUTURES);
     }, PRICE_UPDATE_INTERVAL);
 

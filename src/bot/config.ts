@@ -45,7 +45,7 @@ export const TOKEN_MAPPINGS: Record<string, Record<string, string>> = {
 };
 
 export const MIN_PROFIT_PERCENTAGE = 0.1; // 0.5%
-export const PRICE_UPDATE_INTERVAL = 1000; // 1 second
+export const PRICE_UPDATE_INTERVAL = 5 * 1000; // 5 second
 
 // Telegram Configuration
 export const TELEGRAM_CONFIG = {
@@ -63,7 +63,7 @@ export const config = {
   redis: {
     host: process.env.REDIS_HOST || 'localhost',
     port: parseInt(process.env.REDIS_PORT || '6379', 10),
-    password: process.env.REDIS_PASSWORD || '',
+    password: process.env.REDIS_PASSWORD || 'your_redis_password',
   },
   // ... existing config ...
 };
