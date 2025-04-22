@@ -44,7 +44,7 @@ export const TOKEN_MAPPINGS: Record<string, Record<string, string>> = {
   }
 };
 
-export const MIN_PROFIT_PERCENTAGE = 0.7; // 0.5%
+export const MIN_PROFIT_PERCENTAGE = 0.1; // 0.5%
 export const PRICE_UPDATE_INTERVAL = 1000; // 1 second
 
 // Telegram Configuration

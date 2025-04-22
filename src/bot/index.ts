@@ -89,21 +89,21 @@ class ArbitrageBot {
       console.log(`Connecting to ${exchangeName}...`);
       exchange.connect();
       
-      // Subscribe to spot pairs
-      const spotPairs = Array.from(this.commonTradingPairs);
-      console.log(`Subscribing to ${spotPairs.length} spot pairs on ${exchangeName}`);
-      await exchange.subscribeToSymbols(spotPairs, MarketType.SPOT);
+      // // Subscribe to spot pairs
+      // const spotPairs = Array.from(this.commonTradingPairs);
+      // console.log(`Subscribing to ${spotPairs.length} spot pairs on ${exchangeName}`);
+      // await exchange.subscribeToSymbols(spotPairs, MarketType.SPOT);
       
       // Subscribe to futures pairs
-      // const futuresPairs = Array.from(this.commonFuturesPairs);
-      // console.log(`Subscribing to ${futuresPairs.length} futures pairs on ${exchangeName}`);
-      // await exchange.subscribeToSymbols(futuresPairs, MarketType.FUTURES);
+      const futuresPairs = Array.from(this.commonFuturesPairs);
+      console.log(`Subscribing to ${futuresPairs.length} futures pairs on ${exchangeName}`);
+      await exchange.subscribeToSymbols(futuresPairs, MarketType.FUTURES);
     }
 
     // Start monitoring prices
     setInterval(() => {
-      this.checkArbitrageOpportunities(MarketType.SPOT);
-      // this.checkArbitrageOpportunities(MarketType.FUTURES);
+      // this.checkArbitrageOpportunities(MarketType.SPOT);
+      this.checkArbitrageOpportunities(MarketType.FUTURES);
     }, PRICE_UPDATE_INTERVAL);
 
     console.log('Arbitrage bot started with WebSocket and Telegram notifications enabled');
@@ -124,7 +124,9 @@ class ArbitrageBot {
     for (const [exchangeName, exchange] of this.exchanges) {
       let exchangePriceCount = 0;
       const pairs = marketType === MarketType.SPOT ? this.commonTradingPairs : this.commonFuturesPairs;
-      
+
+      console.log(`${marketType} common pair amount: ${pairs.size}`);
+
       for (const symbol of pairs) {
         const price = exchange.getPrice(symbol, marketType);
         if (price) {
@@ -147,7 +149,7 @@ class ArbitrageBot {
       console.log(`${exchangeName}: ${count} pairs with prices`);
     }
 
-    const opportunities = this.analyzer.findOpportunities(prices);
+    const opportunities = this.analyzer.findOpportunities(prices, marketType);
 
     for (const opportunity of opportunities) {
       // Broadcast to WebSocket clients regardless of cooldown

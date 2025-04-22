@@ -1,43 +1,62 @@
 import WebSocket from 'ws';
 import { BaseExchange } from './base';
+import { MarketType } from '../types';
 
 export class BybitExchange extends BaseExchange {
-  private pendingSubscriptions: string[] = [];
+  private pendingSubscriptions: { spot: string[], futures: string[] } = { spot: [], futures: [] };
   private readonly BATCH_SIZE = 10; // Maximum symbols per subscription request
 
   connect(): void {
-    this.ws = new WebSocket(this.config.wsEndpoint);
+    // Connect to spot market
+    this.spotWs = new WebSocket(this.config.wsSpotEndpoint);
+    this.setupWebSocket(this.spotWs, MarketType.SPOT);
 
-    this.ws.on('open', () => {
-      console.log('Connected to Bybit WebSocket');
-      if (this.pendingSubscriptions.length > 0) {
-        this.sendSubscriptions(this.pendingSubscriptions);
-        this.pendingSubscriptions = [];
+    // Connect to futures market
+    this.futuresWs = new WebSocket(this.config.wsFuturesEndpoint);
+    this.setupWebSocket(this.futuresWs, MarketType.FUTURES);
+  }
+
+  private setupWebSocket(ws: WebSocket, marketType: MarketType): void {
+    ws.on('open', () => {
+      console.log(`Connected to Bybit ${marketType} WebSocket`);
+      if (this.pendingSubscriptions[marketType].length > 0) {
+        this.sendSubscriptions(this.pendingSubscriptions[marketType], marketType);
+        this.pendingSubscriptions[marketType] = [];
       }
     });
 
-    this.ws.on('message', (data: string) => {
-      this.handleMessage(data);
+    ws.on('message', (data:Buffer) => {
+      this.handleMessage(data, marketType);
     });
 
-    this.ws.on('error', (error) => {
-      console.error('Bybit WebSocket error:', error);
+    ws.on('error', (error) => {
+      console.error(`Bybit ${marketType} WebSocket error:`, error);
     });
 
-    this.ws.on('close', () => {
-      console.log('Bybit WebSocket connection closed. Attempting to reconnect...');
-      setTimeout(() => this.connect(), 5000);
+    ws.on('close', () => {
+      console.log(`Bybit ${marketType} WebSocket connection closed. Attempting to reconnect...`);
+      setTimeout(() => {
+        if (marketType === MarketType.SPOT) {
+          this.spotWs = new WebSocket(this.config.wsSpotEndpoint);
+          this.setupWebSocket(this.spotWs, MarketType.SPOT);
+        } else {
+          this.futuresWs = new WebSocket(this.config.wsFuturesEndpoint);
+          this.setupWebSocket(this.futuresWs, MarketType.FUTURES);
+        }
+      }, 5000);
     });
   }
 
-  private async sendSubscriptions(symbols: string[]): Promise<void> {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      console.log('WebSocket not ready, queueing subscriptions');
+  private async sendSubscriptions(symbols: string[], marketType: MarketType): Promise<void> {
+    const ws = marketType === MarketType.SPOT ? this.spotWs : this.futuresWs;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      console.log(`WebSocket not ready, queueing ${marketType} subscriptions`);
+      this.pendingSubscriptions[marketType] = symbols;
       return;
     }
 
     const formattedSymbols = symbols.map(symbol =>
-        symbol.replace('/', '').toUpperCase()
+      symbol.replace('/', '').toUpperCase()
     );
 
     // Split symbols into batches
@@ -49,39 +68,35 @@ export class BybitExchange extends BaseExchange {
       };
 
       try {
-        this.ws.send(JSON.stringify(subscribeMsg));
-        console.log(`Subscribed to batch of ${batch.length} symbols on Bybit (${i + 1}-${Math.min(i + this.BATCH_SIZE, formattedSymbols.length)} of ${formattedSymbols.length})`);
+        ws.send(JSON.stringify(subscribeMsg));
+        console.log(`Subscribed to batch of ${batch.length} ${marketType} symbols on Bybit (${i + 1}-${Math.min(i + this.BATCH_SIZE, formattedSymbols.length)} of ${formattedSymbols.length})`);
 
         // Add a small delay between batches to avoid rate limiting
         if (i + this.BATCH_SIZE < formattedSymbols.length) {
           await new Promise(resolve => setTimeout(resolve, 100));
         }
       } catch (error) {
-        console.error('Error sending subscription message:', error);
+        console.error(`Error sending ${marketType} subscription message:`, error);
       }
     }
   }
 
-  async subscribeToSymbols(symbols: string[]): Promise<void> {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      this.pendingSubscriptions = symbols;
-      return;
-    }
-    await this.sendSubscriptions(symbols);
+  async subscribeToSymbols(symbols: string[], marketType: MarketType): Promise<void> {
+    await this.sendSubscriptions(symbols, marketType);
   }
 
-  handleMessage(message: Buffer): void {
+  handleMessage(message: Buffer, marketType: MarketType): void {
     try {
       const data = JSON.parse(message.toString());
       if (data.topic?.startsWith('tickers.')) {
         const symbol = data.data.symbol;
         const price = parseFloat(data.data.lastPrice);
-        this.updatePrice(symbol, price);
+        this.updatePrice(symbol, price, marketType);
       } else {
-        console.error('Wrong bybit message ', message.toString())
+        console.error(`Wrong Bybit ${marketType} message:`, message.toString());
       }
     } catch (error) {
-      console.error('Error handling Bybit message:', error);
+      console.error(`Error handling Bybit ${marketType} message:`, error);
     }
   }
 
@@ -92,7 +107,7 @@ export class BybitExchange extends BaseExchange {
     while (retryCount < maxRetries) {
       try {
         const response = await this.makeRequest('/v5/market/instruments-info', 'GET', {
-          category: 'spot'
+          category: marketType === MarketType.SPOT ? 'spot' : 'linear'
         }, marketType);
 
         if (!response || !response.result || !response.result.list) {
@@ -100,22 +115,22 @@ export class BybitExchange extends BaseExchange {
         }
 
         const pairs = response.result.list
-            .filter((symbol: any) => symbol.status === 'Trading')
-            .map((symbol: any) => {
-              const pair = `${symbol.baseCoin}/${symbol.quoteCoin}`;
-              if (marketType === MarketType.SPOT) {
-                this.spotTradingPairs.add(pair);
-              } else {
-                this.futuresTradingPairs.add(pair);
-              }
-              return pair;
-            });
+          .filter((symbol: any) => symbol.status === 'Trading')
+          .map((symbol: any) => {
+            const pair = `${symbol.baseCoin}/${symbol.quoteCoin}`;
+            if (marketType === MarketType.SPOT) {
+              this.spotTradingPairs.add(pair);
+            } else {
+              this.futuresTradingPairs.add(pair);
+            }
+            return pair;
+          });
 
-        console.log(`Fetched ${pairs.length} trading pairs from Bybit`);
+        console.log(`Fetched ${pairs.length} ${marketType} trading pairs from Bybit`);
         return pairs;
       } catch (error) {
         retryCount++;
-        console.error(`Error fetching Bybit trading pairs (attempt ${retryCount}/${maxRetries}):`, error);
+        console.error(`Error fetching Bybit ${marketType} trading pairs (attempt ${retryCount}/${maxRetries}):`, error);
 
         if (retryCount === maxRetries) {
           console.error('Max retries reached, returning empty array');

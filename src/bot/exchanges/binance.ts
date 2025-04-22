@@ -66,6 +66,7 @@ export class BinanceExchange extends BaseExchange {
     }
   }
 
+  // @ts-expect-error not used variable
   async subscribeToSymbols(symbols: string[], marketType: MarketType): Promise<void> {
     const ws = marketType === MarketType.SPOT ? this.spotWs : this.futuresWs;
     if (!ws || ws.readyState !== WebSocket.OPEN) {

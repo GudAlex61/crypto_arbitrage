@@ -1,9 +1,9 @@
 import { Decimal } from 'decimal.js';
-import { PriceData, ArbitrageOpportunity } from './types';
+import {PriceData, ArbitrageOpportunity, MarketType} from './types';
 import { MIN_PROFIT_PERCENTAGE } from './config';
 
 export class ArbitrageAnalyzer {
-  findOpportunities(prices: PriceData[]): ArbitrageOpportunity[] {
+  findOpportunities(prices: PriceData[], marketType: MarketType): ArbitrageOpportunity[] {
     const opportunities: ArbitrageOpportunity[] = [];
     const symbolGroups = this.groupBySymbol(prices);
 
@@ -33,6 +33,7 @@ export class ArbitrageAnalyzer {
               buyPrice,
               sellPrice,
               profitPercentage: Math.abs(profitPercentage),
+              marketType,
               timestamp: Date.now(),
             });
           }
