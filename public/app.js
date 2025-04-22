@@ -3,6 +3,8 @@ let ws;
 let spotOpportunities = new Map();
 let futuresOpportunities = new Map();
 let currentMarket = 'spot';
+let spotLastUpdate = null;
+let futuresLastUpdate = null;
 const opportunityTemplate = Handlebars.compile(document.getElementById('opportunity-template').innerHTML);
 
 // Register Handlebars helpers
@@ -51,7 +53,7 @@ function connect() {
         
         if (message.type === 'opportunity') {
             updateOpportunity(message.data);
-            updateLastUpdate();
+            updateLastUpdate(message.data.marketType);
         }
     };
 }
@@ -88,8 +90,15 @@ function updateTable() {
     document.getElementById('opportunity-count').textContent = opportunities.size;
 }
 
-function updateLastUpdate() {
-    document.getElementById('last-update').textContent = new Date().toLocaleString();
+function updateLastUpdate(marketType) {
+    const now = new Date().toLocaleString();
+    if (marketType === 'spot') {
+        spotLastUpdate = now;
+        document.getElementById('spot-last-update').textContent = now;
+    } else {
+        futuresLastUpdate = now;
+        document.getElementById('futures-last-update').textContent = now;
+    }
 }
 
 // Tab switching
@@ -100,6 +109,9 @@ document.getElementById('spot-tab').addEventListener('click', () => {
     document.getElementById('futures-tab').classList.remove('bg-blue-600', 'text-white');
     document.getElementById('futures-tab').classList.add('bg-gray-700', 'text-gray-300');
     updateTable();
+    // Update last update display
+    document.getElementById('spot-last-update').classList.remove('hidden');
+    document.getElementById('futures-last-update').classList.add('hidden');
 });
 
 document.getElementById('futures-tab').addEventListener('click', () => {
@@ -109,6 +121,9 @@ document.getElementById('futures-tab').addEventListener('click', () => {
     document.getElementById('spot-tab').classList.remove('bg-blue-600', 'text-white');
     document.getElementById('spot-tab').classList.add('bg-gray-700', 'text-gray-300');
     updateTable();
+    // Update last update display
+    document.getElementById('futures-last-update').classList.remove('hidden');
+    document.getElementById('spot-last-update').classList.add('hidden');
 });
 
 // Clean up old opportunities periodically

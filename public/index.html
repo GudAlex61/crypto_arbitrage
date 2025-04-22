@@ -22,7 +22,10 @@
                     <button id="futures-tab" class="px-4 py-2 rounded-lg bg-gray-700 text-gray-300 font-semibold">Futures</button>
                 </div>
                 <div class="flex items-center space-x-4">
-                    <span class="text-sm text-gray-400">Last update: <span id="last-update">Never</span></span>
+                    <span class="text-sm text-gray-400">Last update: 
+                        <span id="spot-last-update" class="hidden">Never</span>
+                        <span id="futures-last-update" class="hidden">Never</span>
+                    </span>
                     <span class="text-sm text-gray-400">Total opportunities: <span id="opportunity-count">0</span></span>
                 </div>
             </div>
