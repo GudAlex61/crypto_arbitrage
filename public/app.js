@@ -1,4 +1,11 @@
-// Initialize Handlebars helpers
+// WebSocket connection
+let ws;
+let spotOpportunities = new Map();
+let futuresOpportunities = new Map();
+let currentMarket = 'spot';
+const opportunityTemplate = Handlebars.compile(document.getElementById('opportunity-template').innerHTML);
+
+// Register Handlebars helpers
 Handlebars.registerHelper('formatPrice', function(price) {
     if (price >= 1) {
         return price.toFixed(2);
@@ -16,13 +23,8 @@ Handlebars.registerHelper('formatProfit', function(profit) {
 });
 
 Handlebars.registerHelper('formatTime', function(timestamp) {
-    return new Date(timestamp).toLocaleTimeString();
+    return new Date(timestamp).toLocaleString();
 });
-
-// WebSocket connection
-let ws;
-let opportunities = new Map();
-const opportunityTemplate = Handlebars.compile(document.getElementById('opportunity-template').innerHTML);
 
 function connect() {
     ws = new WebSocket('ws://localhost:3001/arbitrage');
@@ -56,18 +58,26 @@ function connect() {
 
 function updateOpportunity(opportunity) {
     const key = `${opportunity.symbol}-${opportunity.buyExchange}-${opportunity.sellExchange}`;
-    const isNew = !opportunities.has(key);
+    const isNew = !(currentMarket === 'spot' ? spotOpportunities : futuresOpportunities).has(key);
     
-    opportunities.set(key, {
-        ...opportunity,
-        isNew: isNew
-    });
+    if (opportunity.marketType === 'spot') {
+        spotOpportunities.set(key, {
+            ...opportunity,
+            isNew: isNew
+        });
+    } else {
+        futuresOpportunities.set(key, {
+            ...opportunity,
+            isNew: isNew
+        });
+    }
     
     updateTable();
 }
 
 function updateTable() {
     const tableBody = document.getElementById('opportunities-table');
+    const opportunities = currentMarket === 'spot' ? spotOpportunities : futuresOpportunities;
     const sortedOpportunities = Array.from(opportunities.values())
         .sort((a, b) => b.profitPercentage - a.profitPercentage);
     
@@ -79,19 +89,43 @@ function updateTable() {
 }
 
 function updateLastUpdate() {
-    document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+    document.getElementById('last-update').textContent = new Date().toLocaleString();
 }
 
-// Start WebSocket connection
-connect();
+// Tab switching
+document.getElementById('spot-tab').addEventListener('click', () => {
+    currentMarket = 'spot';
+    document.getElementById('spot-tab').classList.remove('bg-gray-700', 'text-gray-300');
+    document.getElementById('spot-tab').classList.add('bg-blue-600', 'text-white');
+    document.getElementById('futures-tab').classList.remove('bg-blue-600', 'text-white');
+    document.getElementById('futures-tab').classList.add('bg-gray-700', 'text-gray-300');
+    updateTable();
+});
+
+document.getElementById('futures-tab').addEventListener('click', () => {
+    currentMarket = 'futures';
+    document.getElementById('futures-tab').classList.remove('bg-gray-700', 'text-gray-300');
+    document.getElementById('futures-tab').classList.add('bg-blue-600', 'text-white');
+    document.getElementById('spot-tab').classList.remove('bg-blue-600', 'text-white');
+    document.getElementById('spot-tab').classList.add('bg-gray-700', 'text-gray-300');
+    updateTable();
+});
 
 // Clean up old opportunities periodically
 setInterval(() => {
     const now = Date.now();
-    for (const [key, opportunity] of opportunities.entries()) {
+    for (const [key, opportunity] of spotOpportunities.entries()) {
         if (now - opportunity.timestamp > 5 * 60 * 1000) { // Remove after 5 minutes
-            opportunities.delete(key);
+            spotOpportunities.delete(key);
+        }
+    }
+    for (const [key, opportunity] of futuresOpportunities.entries()) {
+        if (now - opportunity.timestamp > 5 * 60 * 1000) { // Remove after 5 minutes
+            futuresOpportunities.delete(key);
         }
     }
     updateTable();
 }, 30000);
+
+// Connect to WebSocket
+connect();

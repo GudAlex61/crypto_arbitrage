@@ -6,19 +6,23 @@ dotenv.config();
 export const EXCHANGES: ExchangeConfig[] = [
   {
     name: 'Binance',
-    wsEndpoint: 'wss://stream.binance.com:9443/ws',
-    restEndpoint: 'https://api.binance.com',
+    wsSpotEndpoint: 'wss://stream.binance.com:9443/ws',
+    wsFuturesEndpoint: 'wss://fstream.binance.com/ws',
+    restSpotEndpoint: 'https://api.binance.com',
+    restFuturesEndpoint: 'https://fapi.binance.com',
   },
   {
     name: 'Bybit',
-    wsEndpoint: 'wss://stream.bybit.com/v5/public/spot',
-    restEndpoint: 'https://api.bybit.com',
+    wsSpotEndpoint: 'wss://stream.bybit.com/v5/public/spot',
+    restSpotEndpoint: 'https://api.bybit.com',
+    wsFuturesEndpoint: 'wss://stream.bybit.com/v5/public/linear',
+    restFuturesEndpoint: 'https://api.bybit.com'
   },
-  {
-    name: 'MEXC',
-    wsEndpoint: 'wss://wbs-api.mexc.com/ws',
-    restEndpoint: 'https://api.mexc.com',
-  },
+  // {
+  //   name: 'MEXC',
+  //   wsSpotEndpoint: 'wss://wbs-api.mexc.com/ws',
+  //   restEndpoint: 'https://api.mexc.com',
+  // },
 ];
 
 // Token name mappings between exchanges

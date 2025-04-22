@@ -19,7 +19,7 @@ export class MEXCExchange extends BaseExchange {
   }
 
   private createConnection(): WebSocket {
-    const ws = new WebSocket(this.config.wsEndpoint);
+    const ws = new WebSocket(this.config.wsSpotEndpoint);
 
     ws.on('error', (error) => {
       console.error('MEXC WebSocket error:', error);

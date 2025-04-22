@@ -70,20 +70,22 @@ export class BybitExchange extends BaseExchange {
     await this.sendSubscriptions(symbols);
   }
 
-  handleMessage(message: string): void {
+  handleMessage(message: Buffer): void {
     try {
-      const data = JSON.parse(message);
+      const data = JSON.parse(message.toString());
       if (data.topic?.startsWith('tickers.')) {
         const symbol = data.data.symbol;
         const price = parseFloat(data.data.lastPrice);
         this.updatePrice(symbol, price);
+      } else {
+        console.error('Wrong bybit message ', message.toString())
       }
     } catch (error) {
       console.error('Error handling Bybit message:', error);
     }
   }
 
-  async fetchTradingPairs(): Promise<string[]> {
+  async fetchTradingPairs(marketType: MarketType): Promise<string[]> {
     const maxRetries = 3;
     let retryCount = 0;
 
@@ -91,7 +93,7 @@ export class BybitExchange extends BaseExchange {
       try {
         const response = await this.makeRequest('/v5/market/instruments-info', 'GET', {
           category: 'spot'
-        });
+        }, marketType);
 
         if (!response || !response.result || !response.result.list) {
           throw new Error('Invalid response format from Bybit API');
@@ -101,7 +103,11 @@ export class BybitExchange extends BaseExchange {
             .filter((symbol: any) => symbol.status === 'Trading')
             .map((symbol: any) => {
               const pair = `${symbol.baseCoin}/${symbol.quoteCoin}`;
-              this.tradingPairs.add(pair);
+              if (marketType === MarketType.SPOT) {
+                this.spotTradingPairs.add(pair);
+              } else {
+                this.futuresTradingPairs.add(pair);
+              }
               return pair;
             });
 

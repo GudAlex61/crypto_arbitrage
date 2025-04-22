@@ -1,134 +1,134 @@
 import WebSocket from 'ws';
 import { BaseExchange } from './base';
-import {BLACKLIST} from "../config.ts";
+import { BLACKLIST } from "../config.ts";
+import { MarketType } from '../types.ts';
 
 export class BinanceExchange extends BaseExchange {
-  private pendingSubscriptions: string[] = [];
-  private readonly BATCH_SIZE = 20; // Maximum symbols per subscription request
-  private readonly MAX_RECONNECT_ATTEMPTS = 3;
+  private pendingSubscriptions: { spot: boolean, futures: boolean } = { spot: false, futures: false };
 
   connect(): void {
-    this.ws = new WebSocket(this.config.wsEndpoint);
+    // Connect to spot market
+    this.spotWs = new WebSocket(this.config.wsSpotEndpoint);
+    this.setupWebSocket(this.spotWs, MarketType.SPOT);
 
-    this.ws.on('open', () => {
-      console.log('Connected to Binance WebSocket');
+    // Connect to futures market
+    this.futuresWs = new WebSocket(this.config.wsFuturesEndpoint);
+    this.setupWebSocket(this.futuresWs, MarketType.FUTURES);
+  }
+
+  private setupWebSocket(ws: WebSocket, marketType: MarketType): void {
+    ws.on('open', () => {
+      console.log(`Connected to Binance ${marketType} WebSocket`);
       // Send any pending subscriptions once connected
-      if (this.pendingSubscriptions.length > 0) {
-        this.sendSubscriptions(this.pendingSubscriptions);
-        this.pendingSubscriptions = [];
+      if (this.pendingSubscriptions[marketType]) {
+        this.sendSubscriptions(marketType);
+        this.pendingSubscriptions[marketType] = false;
       }
     });
 
-    this.ws.on('message', (data: Buffer) => {
-      this.handleMessage(data);
+    ws.on('message', (data: Buffer) => {
+      this.handleMessage(data, marketType);
     });
 
-    this.ws.on('error', (error) => {
-      console.error('Binance WebSocket error:', error);
+    ws.on('error', (error) => {
+      console.error(`Binance ${marketType} WebSocket error:`, error);
     });
 
-    this.ws.on('close', () => {
-      console.log('Binance WebSocket connection closed. Attempting to reconnect...');
-      setTimeout(() => this.connect(), 5000); // Reconnect after 5 seconds
-    });
-  }
-
-  private async sendSubscriptions(symbols: string[]): Promise<void> {
-    const formattedSymbols = symbols.map(symbol =>
-      symbol.toLowerCase().replace('/', '')
-    );
-
-    // Store all symbols for potential resubscription
-    this.pendingSubscriptions = formattedSymbols;
-
-    // Calculate total number of batches
-    const totalBatches = Math.ceil(formattedSymbols.length / this.BATCH_SIZE);
-    console.log(`Starting subscription of ${formattedSymbols.length} symbols in ${totalBatches} batches`);
-
-    // Process symbols in batches
-    for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
-      const startIndex = batchIndex * this.BATCH_SIZE;
-      const endIndex = Math.min(startIndex + this.BATCH_SIZE, formattedSymbols.length);
-      const batch = formattedSymbols.slice(startIndex, endIndex);
-      
-      if (batch.length === 0) continue;
-
-      const subscriptions = batch.map(symbol => `${symbol}@ticker`);
-
-      const subscribeMsg = {
-        method: 'SUBSCRIBE',
-        params: subscriptions,
-        id: batchIndex + 1,
-      };
-
-      try {
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-          this.ws.send(JSON.stringify(subscribeMsg));
-          console.log(`Subscribed to batch ${batchIndex + 1}/${totalBatches} (${batch.length} symbols)`);
-          
-          // Add delay between batches to avoid rate limiting
-          if (batchIndex < totalBatches - 1) {
-            await new Promise(resolve => setTimeout(resolve, 500));
-          }
+    ws.on('close', () => {
+      console.log(`Binance ${marketType} WebSocket connection closed. Attempting to reconnect...`);
+      setTimeout(() => {
+        if (marketType === MarketType.SPOT) {
+          this.spotWs = new WebSocket(this.config.wsSpotEndpoint);
+          this.setupWebSocket(this.spotWs, MarketType.SPOT);
+        } else {
+          this.futuresWs = new WebSocket('wss://fstream.binance.com/ws');
+          this.setupWebSocket(this.futuresWs, MarketType.FUTURES);
         }
-      } catch (error) {
-        console.error(`Error sending subscription batch ${batchIndex + 1}:`, error);
-      }
-    }
+      }, 5000);
+    });
   }
 
-  async subscribeToSymbols(symbols: string[]): Promise<void> {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      // Store subscriptions to be sent when connection is ready
-      this.pendingSubscriptions = symbols;
-      return;
-    }
-    await this.sendSubscriptions(symbols);
-  }
+  private async sendSubscriptions(marketType: MarketType): Promise<void> {
+    const subscribeMsg = {
+      method: 'SUBSCRIBE',
+      params: ["!miniTicker@arr"],
+      id: 1,
+    };
 
-  handleMessage(message: Buffer): void {
-    // console.log(`Binance websocket data: ${message}`)
     try {
-      const data = JSON.parse(message.toString());
-      if (data.e === '24hrTicker') {
-        const symbol = data.s;
-        const price = parseFloat(data.c);
-        this.updatePrice(symbol, price);
-      } else {
-        console.error('Binance WebSocket error:', message.toString());
+      const ws = marketType === 'spot' ? this.spotWs : this.futuresWs;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(subscribeMsg));
+        console.log(`Subscribed to ${marketType}`);
       }
     } catch (error) {
-      console.error('Error handling Binance message:', error);
+      console.error(`Error sending ${marketType} subscription: `, error);
     }
   }
 
-  async fetchTradingPairs(): Promise<string[]> {
+  async subscribeToSymbols(symbols: string[], marketType: MarketType): Promise<void> {
+    const ws = marketType === MarketType.SPOT ? this.spotWs : this.futuresWs;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      // Store subscriptions to be sent when connection is ready
+      this.pendingSubscriptions[marketType] = true;
+      return;
+    }
+    await this.sendSubscriptions(marketType);
+  }
+
+  handleMessage(message: Buffer, marketType: MarketType): void {
+    try {
+      const data = JSON.parse(message.toString());
+      if (!data.length) {
+        return;
+      }
+      for (const item of data) {
+        if (item.e === '24hrMiniTicker') {
+          const symbol = item.s;
+          const price = parseFloat(item.c);
+          this.updatePrice(symbol, price, marketType);
+        }
+      }
+    } catch (error) {
+      console.error(`Error handling Binance ${marketType} message:`, error);
+    }
+  }
+
+  async fetchTradingPairs(marketType: MarketType): Promise<string[]> {
     const maxRetries = 3;
     let retryCount = 0;
 
     while (retryCount < maxRetries) {
       try {
-        const response = await this.makeRequest('/api/v3/exchangeInfo');
+        const endpoint = marketType === MarketType.SPOT
+          ? '/api/v3/exchangeInfo'
+          : '/fapi/v1/exchangeInfo';
+
+        const response = await this.makeRequest(endpoint, 'GET', {}, marketType);
 
         if (!response || !response.symbols) {
-          throw new Error('Invalid response format from Binance API');
+          throw new Error(`Invalid response format from Binance ${marketType} API`);
         }
 
         const pairs = response.symbols
-            .filter((symbol: any) => symbol.status === 'TRADING')
-            .filter((symbol: any) => symbol.quoteAsset === 'USDT')
-            .filter((symbol: any) => !BLACKLIST.includes(symbol.baseAsset))
-            .map((symbol: any) => {
-              const pair = `${symbol.baseAsset}/${symbol.quoteAsset}`;
-              this.tradingPairs.add(pair);
-              return pair;
-            });
+          .filter((symbol: any) => symbol.status === 'TRADING')
+          .filter((symbol: any) => symbol.quoteAsset === 'USDT')
+          .filter((symbol: any) => !BLACKLIST.includes(symbol.baseAsset))
+          .map((symbol: any) => {
+            const pair = `${symbol.baseAsset}/${symbol.quoteAsset}`;
+            if (marketType === MarketType.SPOT) {
+              this.spotTradingPairs.add(pair);
+            } else {
+              this.futuresTradingPairs.add(pair);
+            }
+            return pair;
+          });
 
-        console.log(`Fetched ${pairs.length} trading pairs from Binance`);
+        console.log(`Fetched ${pairs.length} ${marketType} trading pairs from Binance`);
         return pairs;
       } catch (error) {
         retryCount++;
-        console.error(`Error fetching Binance trading pairs (attempt ${retryCount}/${maxRetries}):`, error);
+        console.error(`Error fetching Binance ${marketType} trading pairs (attempt ${retryCount}/${maxRetries}):`, error);
 
         if (retryCount === maxRetries) {
           console.error('Max retries reached, returning empty array');

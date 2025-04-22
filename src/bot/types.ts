@@ -1,7 +1,14 @@
+export enum MarketType {
+  SPOT = 'spot',
+  FUTURES = 'futures'
+}
+
 export interface ExchangeConfig {
   name: string;
-  wsEndpoint: string;
-  restEndpoint: string;
+  wsSpotEndpoint: string;
+  wsFuturesEndpoint: string;
+  restSpotEndpoint: string;
+  restFuturesEndpoint: string;
   apiKey?: string;
   apiSecret?: string;
 }
@@ -10,6 +17,7 @@ export interface PriceData {
   symbol: string;
   price: number;
   exchange: string;
+  marketType: MarketType;
   timestamp: number;
 }
 
@@ -20,5 +28,6 @@ export interface ArbitrageOpportunity {
   buyPrice: number;
   sellPrice: number;
   profitPercentage: number;
+  marketType: MarketType;
   timestamp: number;
 }
