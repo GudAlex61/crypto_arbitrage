@@ -4,6 +4,7 @@ import { MEXCExchange } from './exchanges/mexc/mexc';
 import { ArbitrageAnalyzer } from './arbitrage';
 import { TelegramService } from './services/telegram';
 import { WebSocketService } from './services/websocket';
+import { RedisService } from './services/redis';
 import { EXCHANGES, PRICE_UPDATE_INTERVAL } from './config';
 import { MarketType, PriceData } from './types';
 
@@ -12,15 +13,16 @@ class ArbitrageBot {
   private analyzer: ArbitrageAnalyzer;
   private telegramService: TelegramService;
   private webSocketService: WebSocketService;
+  private redisService: RedisService;
   private commonTradingPairs: Set<string> = new Set();
   private commonFuturesPairs: Set<string> = new Set();
-  private lastLogTime: Map<string, number> = new Map();
   private readonly LOG_COOLDOWN = 5 * 60 * 1000; // 5 minutes in milliseconds
 
   constructor() {
     this.analyzer = new ArbitrageAnalyzer();
     this.telegramService = new TelegramService();
     this.webSocketService = new WebSocketService(3001);
+    this.redisService = new RedisService();
     this.initializeExchanges();
   }
 
@@ -109,12 +111,12 @@ class ArbitrageBot {
     console.log('Arbitrage bot started with WebSocket and Telegram notifications enabled');
   }
 
-  private isOnCooldown(symbol: string): boolean {
-    const lastTime = this.lastLogTime.get(symbol);
-    if (!lastTime) return false;
+  private async isOnCooldown(symbol: string): Promise<boolean> {
+    return await this.redisService.isOnCooldown(symbol);
+  }
 
-    const timeSinceLastLog = Date.now() - lastTime;
-    return timeSinceLastLog < this.LOG_COOLDOWN;
+  private async setCooldown(symbol: string): Promise<void> {
+    await this.redisService.setCooldown(symbol, this.LOG_COOLDOWN);
   }
 
   private async checkArbitrageOpportunities(marketType: MarketType) {
@@ -156,7 +158,7 @@ class ArbitrageBot {
       this.webSocketService.broadcastOpportunity(opportunity);
 
       // Console logging with cooldown
-      if (!this.isOnCooldown(opportunity.symbol)) {
+      if (!(await this.isOnCooldown(opportunity.symbol))) {
         console.log(`${marketType} Arbitrage Opportunity Found!`);
         console.log(`Symbol: ${opportunity.symbol}`);
         console.log(`Buy from ${opportunity.buyExchange} at ${opportunity.buyPrice}`);
@@ -164,8 +166,8 @@ class ArbitrageBot {
         console.log(`Potential profit: ${opportunity.profitPercentage.toFixed(2)}%`);
         console.log('-------------------');
 
-        // Update last log time for this symbol
-        this.lastLogTime.set(opportunity.symbol, Date.now());
+        // Set cooldown for this symbol
+        await this.setCooldown(opportunity.symbol);
       }
 
       // Send notification to Telegram (it has its own cooldown mechanism)
@@ -173,10 +175,11 @@ class ArbitrageBot {
     }
   }
 
-  public stop() {
+  public async stop() {
     for (const exchange of this.exchanges.values()) {
       exchange.disconnect();
     }
+    await this.redisService.disconnect();
   }
 }
 
@@ -185,8 +188,8 @@ const bot = new ArbitrageBot();
 bot.start();
 
 // Handle graceful shutdown
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
   console.log('Shutting down bot...');
-  bot.stop();
+  await bot.stop();
   process.exit(0);
 });
