@@ -16,7 +16,8 @@ class ArbitrageBot {
   private redisService: RedisService;
   private commonTradingPairs: Set<string> = new Set();
   private commonFuturesPairs: Set<string> = new Set();
-  private readonly LOG_COOLDOWN = 5 * 60 * 1000; // 5 minutes in milliseconds
+  private readonly SPOT_LOG_COOLDOWN = 5 * 60 * 1000; // 5 minutes in milliseconds
+  private readonly FUTURES_LOG_COOLDOWN = 2 * 60 * 1000; // 2 minutes in milliseconds
 
   constructor() {
     this.analyzer = new ArbitrageAnalyzer();
@@ -111,12 +112,13 @@ class ArbitrageBot {
     console.log('Arbitrage bot started with WebSocket and Telegram notifications enabled');
   }
 
-  private async isOnCooldown(symbol: string): Promise<boolean> {
-    return await this.redisService.isOnCooldown(symbol);
+  private async isOnCooldown(symbol: string, marketType: MarketType): Promise<boolean> {
+    return await this.redisService.isOnCooldown(symbol, marketType);
   }
 
-  private async setCooldown(symbol: string): Promise<void> {
-    await this.redisService.setCooldown(symbol, this.LOG_COOLDOWN);
+  private async setCooldown(symbol: string, marketType: MarketType): Promise<void> {
+    const cooldownMs = marketType === MarketType.SPOT ? this.SPOT_LOG_COOLDOWN : this.FUTURES_LOG_COOLDOWN;
+    await this.redisService.setCooldown(symbol, marketType, cooldownMs);
   }
 
   private async checkArbitrageOpportunities(marketType: MarketType) {
@@ -158,7 +160,7 @@ class ArbitrageBot {
       this.webSocketService.broadcastOpportunity(opportunity);
 
       // Console logging with cooldown
-      if (!(await this.isOnCooldown(opportunity.symbol))) {
+      if (!(await this.isOnCooldown(opportunity.symbol, marketType))) {
         console.log(`${marketType} Arbitrage Opportunity Found!`);
         console.log(`Symbol: ${opportunity.symbol}`);
         console.log(`Buy from ${opportunity.buyExchange} at ${opportunity.buyPrice}`);
@@ -166,8 +168,8 @@ class ArbitrageBot {
         console.log(`Potential profit: ${opportunity.profitPercentage.toFixed(2)}%`);
         console.log('-------------------');
 
-        // Set cooldown for this symbol
-        await this.setCooldown(opportunity.symbol);
+        // Set cooldown for this symbol and market type
+        await this.setCooldown(opportunity.symbol, marketType);
       }
 
       // Send notification to Telegram (it has its own cooldown mechanism)
