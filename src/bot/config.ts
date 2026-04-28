@@ -18,11 +18,13 @@ export const EXCHANGES: ExchangeConfig[] = [
     wsFuturesEndpoint: 'wss://stream.bybit.com/v5/public/linear',
     restFuturesEndpoint: 'https://api.bybit.com'
   },
-  // {
-  //   name: 'MEXC',
-  //   wsSpotEndpoint: 'wss://wbs-api.mexc.com/ws',
-  //   restEndpoint: 'https://api.mexc.com',
-  // },
+  {
+    name: 'MEXC',
+    wsSpotEndpoint: 'wss://wbs-api.mexc.com/ws',
+    restSpotEndpoint: 'https://api.mexc.com',
+    wsFuturesEndpoint: 'ss://wbs-api.mexc.com/ws',
+    restFuturesEndpoint: 'https://api.mexc.com'
+  },
 ];
 
 // Token name mappings between exchanges
