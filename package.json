@@ -4,7 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "start:bot": "tsx src/bot/index.ts"
+    "start:bot": "tsx src/bot/index.ts",
+    "start": "node dist/bot/index.js",
+    "build": "tsc"
   },
   "dependencies": {
     "@bufbuild/protobuf": "^2.2.5",
