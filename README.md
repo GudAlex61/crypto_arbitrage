@@ -1,184 +1,98 @@
-# Crypto Arbitrage Bot
+# Crypto Arbitrage Bot — dashboard + futures + order-book VWAP
 
-A real-time cryptocurrency arbitrage bot that monitors price differences across multiple exchanges (Binance, Bybit, and MEXC) for both spot and futures markets.
+Исправленная версия бота для мониторинга арбитража между CEX-биржами.
 
-![Crypto Arbitrage Dashboard](https://github.com/user-attachments/assets/5d7169e1-946a-4edb-b717-513fe70bb7b4)
+## Что исправлено
 
+- Дашборд снова отображает возможности: фронтенд теперь читает `netProfitPct`, а не старое поле `profitPercentage`.
+- WebSocket на фронтенде больше не захардкожен на `ws://localhost:3001`; теперь используется текущий host, поэтому Docker/VPS/проксирование работают корректнее.
+- При подключении дашборд получает snapshot уже найденных возможностей, а не ждёт только будущих событий.
+- OKX spot больше не возвращает `0` пар: для spot используется `quoteCcy`, для futures — `settleCcy`.
+- Добавлен REST fallback/snapshot цен для spot и futures, чтобы фьючерсы работали даже если WebSocket-подписка не успела подняться или отвалилась.
+- Telegram отключён по умолчанию и больше не ломает запуск без токена.
+- Redis получил in-memory fallback: если Redis временно недоступен, бот продолжит работать.
+- Добавлены биржи: Binance, Bybit, OKX, Gate, KuCoin, MEXC, Bitget.
+- Добавлена таблица статуса бирж: пары и количество полученных цен по spot/futures.
+- Добавлен верхний фильтр вилок: по умолчанию `MAX_NET_PROFIT_PCT=25`. Всё выше считается подозрительным и не показывается.
+- Добавлена проверка стакана: бот берёт asks на бирже покупки и bids на бирже продажи, считает реальную VWAP-цену исполнения на заданный объём и только после этого показывает вилку.
+- В дашборде теперь видны VWAP buy/sell, top-of-book, slippage, размер сделки, base amount и количество уровней стакана.
+- Добавлена кнопка `Refresh now`: если цикл свободен — запускает обновление сразу, если цикл уже идёт — ставит одно обновление в очередь.
+- Проверка стаканов теперь выполняется параллельно с ограниченной конкуррентностью, а spot и futures проверяются одновременно. Это убирает ситуацию, когда один долгий цикл блокирует обновления почти на минуту.
 
-## Features
+## Быстрый старт
 
-- Real-time price monitoring across multiple exchanges
-- Support for both spot and futures markets
-- WebSocket-based price updates
-- Redis-based cooldown system
-- Telegram notifications for arbitrage opportunities
-- Web dashboard for monitoring opportunities
-- Separate tracking for spot and futures markets
-- Configurable profit thresholds
-- Automatic reconnection to exchanges
-- Docker support for easy deployment
-
-## Supported Exchanges
-
-- Binance (Spot & Futures)
-- Bybit (Spot & Futures)
-- MEXC (Spot)
-
-## Prerequisites
-
-- Node.js 18 or higher
-- Redis server
-- Docker and Docker Compose (optional)
-
-## Installation
-
-### Using Docker (Recommended)
-
-1. Clone the repository:
-```bash
-git clone https://github.com/ramilexe/crypto-arbitrage-bot.git
-cd crypto-arbitrage-bot
-```
-
-2. Copy the environment file:
 ```bash
 cp .env.example .env
-```
-
-3. Edit the `.env` file with your configuration:
-```bash
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token
-TELEGRAM_CHAT_ID=your_telegram_chat_id
-REDIS_PASSWORD=your_redis_password
-```
-
-4. Start the services:
-```bash
-docker-compose up -d
-```
-
-### Manual Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/ramilexe/crypto-arbitrage-bot.git
-cd crypto-arbitrage-bot
-```
-
-2. Install dependencies:
-```bash
 npm install
-```
-
-3. Copy the environment file:
-```bash
-cp .env.example .env
-```
-
-4. Edit the `.env` file with your configuration
-
-5. Start Redis server:
-```bash
-# Using Docker
-docker run -d --name redis -p 6379:6379 redis:7-alpine --requirepass your_redis_password
-
-# Or install and start Redis locally
-```
-
-6. Start the bot:
-```bash
 npm start
 ```
 
-## Configuration
+Дашборд: <http://localhost:3001>
 
-The bot can be configured through the following files:
+## Docker
 
-- `.env`: Environment variables
-- `src/bot/config.ts`: Exchange configurations and other settings
-
-### Environment Variables
-
-- `TELEGRAM_BOT_TOKEN`: Your Telegram bot token
-- `TELEGRAM_CHAT_ID`: Your Telegram chat ID
-- `REDIS_PASSWORD`: Redis server password
-- `REDIS_HOST`: Redis server host (default: localhost)
-- `REDIS_PORT`: Redis server port (default: 6379)
-
-## Web Dashboard
-
-The bot includes a web dashboard that can be accessed at `http://localhost:3001`. 
-
-The dashboard provides:
-
-- Real-time arbitrage opportunities
-- Separate views for spot and futures markets
-- Last update timestamps for each market
-- Opportunity count
-- Connection status
-
-## Architecture
-
-- **Exchange Integration**: Each exchange is implemented as a separate class extending a base exchange class
-- **WebSocket Service**: Handles real-time price updates from exchanges
-- **Redis Service**: Manages cooldown periods for notifications
-- **Telegram Service**: Sends notifications about arbitrage opportunities
-- **Arbitrage Analyzer**: Identifies profitable arbitrage opportunities
-- **Web Dashboard**: Provides real-time monitoring interface
-
-## Development
-
-### Project Structure
-
-```
-src/
-├── bot/
-│   ├── exchanges/         # Exchange implementations
-│   ├── services/          # Redis, Telegram, WebSocket services
-│   ├── arbitrage.ts       # Arbitrage analysis logic
-│   ├── config.ts          # Configuration
-│   ├── index.ts           # Main bot entry point
-│   └── types.ts           # Type definitions
-public/
-├── app.js                 # Dashboard frontend
-├── index.html             # Dashboard HTML
-└── styles.css             # Dashboard styles
+```bash
+cp .env.example .env
+docker-compose up --build
 ```
 
-### Adding New Exchanges
+## Основные настройки `.env`
 
-To add a new exchange:
+```env
+PORT=3001
+MIN_NET_PROFIT_PCT=0
+MAX_NET_PROFIT_PCT=25
+MAX_PRICE_AGE_MS=45000
+PRICE_UPDATE_INTERVAL=5000
+REST_REQUEST_TIMEOUT_MS=8000
+INITIAL_DELAY_MS=10000
 
-1. Create a new class in `src/bot/exchanges/` extending `BaseExchange`
-2. Implement the required methods:
-   - `connect()`
-   - `subscribeToSymbols()`
-   - `handleMessage()`
-   - `fetchTradingPairs()`
-3. Add the exchange configuration to `src/bot/config.ts`
+# Проверка стакана / реальной цены исполнения
+ORDERBOOK_ENABLED=true
+ORDERBOOK_TRADE_AMOUNT_USDT=100
+ORDERBOOK_DEPTH_LIMIT=50
+ORDERBOOK_VERIFICATION_LIMIT=15
+ORDERBOOK_CONCURRENCY=8
+ORDERBOOK_FETCH_TIMEOUT_MS=5000
+INCLUDE_WITHDRAWAL_FEES=false
 
-## Contributing
+# Пусто = все поддерживаемые биржи
+ENABLED_EXCHANGES=Binance,Bybit,OKX,Gate,KuCoin,MEXC,Bitget
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+# Telegram выключен по умолчанию
+TELEGRAM_ENABLED=false
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
 
-## License
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=your_redis_password
+BLACKLIST=TST,NEIRO
+```
 
-This software is available under a dual-license model:
+## Важно
 
-1. **Personal Use License**: Free for personal, non-commercial use. The web interface must run locally on your personal machine only.
+Это мониторинг, а не торговый движок. Расчёт по стакану показывает примерную исполнимую VWAP-цену для `ORDERBOOK_TRADE_AMOUNT_USDT`, но реальный маркет-ордер может отличаться из-за задержки, изменения стакана, rate limits, funding, разных contract size на фьючерсах, ограничений аккаунта и min/max order size.
 
-2. **Commercial Use License**: Requires a paid license for any business or revenue-generating use.
+Для spot комиссия вывода по умолчанию только показывается, но не вычитается из Net %. Если хочешь вычитать её из расчёта, поставь `INCLUDE_WITHDRAWAL_FEES=true`.
 
-For commercial licensing inquiries:
-- Email: ramilexe@gmail.com
-- Telegram: [@ramilexe](https://t.me/ramilexe)
+## Почему раньше обновлялось редко
 
-See the [LICENSE](LICENSE) file for detailed terms and conditions.
+Автоинтервал был `PRICE_UPDATE_INTERVAL=5000`, но проверка стаканов шла последовательно. При `ORDERBOOK_VERIFICATION_LIMIT=50` бот мог сделать до 100 запросов стакана на spot и ещё до 100 на futures, а следующий цикл пропускался, пока текущий не завершится. Теперь:
 
-## Disclaimer
+- `ORDERBOOK_VERIFICATION_LIMIT` по умолчанию снижен до `15`;
+- `ORDERBOOK_DEPTH_LIMIT` по умолчанию снижен до `50`;
+- добавлен `ORDERBOOK_CONCURRENCY=8`;
+- добавлен timeout `ORDERBOOK_FETCH_TIMEOUT_MS=5000`;
+- spot и futures анализируются параллельно;
+- в дашборде появилась кнопка ручного обновления и статус текущего цикла.
 
-This bot is for educational purposes only. Use at your own risk. Cryptocurrency trading involves significant risk of loss and is not suitable for all investors. 
+Если нужно ещё быстрее, попробуй:
+
+```env
+PRICE_UPDATE_INTERVAL=3000
+ORDERBOOK_VERIFICATION_LIMIT=8
+ORDERBOOK_DEPTH_LIMIT=20
+ORDERBOOK_CONCURRENCY=6
+ORDERBOOK_FETCH_TIMEOUT_MS=3000
+```

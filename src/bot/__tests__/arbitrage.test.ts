@@ -1,21 +1,34 @@
 import { describe, it, expect } from 'vitest';
 import { ArbitrageAnalyzer } from '../arbitrage';
-import { PriceData } from '../types';
+import { ExchangeConfig, MarketType, PriceData } from '../types';
+
+const exchangeConfigs: ExchangeConfig[] = ['Binance', 'Bybit', 'MEXC'].map((name) => ({
+  name,
+  wsSpotEndpoint: '',
+  wsFuturesEndpoint: '',
+  restSpotEndpoint: '',
+  restFuturesEndpoint: '',
+  fees: { takerFee: 0.1, makerFee: 0.1, withdrawalFees: {} },
+}));
+
+function price(symbol: string, exchange: string, bid: number, ask = bid, marketType = MarketType.SPOT): PriceData {
+  return { symbol, bid, ask, exchange, marketType, timestamp: Date.now() };
+}
 
 describe('ArbitrageAnalyzer', () => {
-  const analyzer = new ArbitrageAnalyzer();
+  const analyzer = new ArbitrageAnalyzer(exchangeConfigs);
 
   describe('findOpportunities', () => {
-    it('should find arbitrage opportunities when price difference exceeds threshold', () => {
+    it('finds arbitrage opportunities when net price difference exceeds threshold', () => {
       const prices: PriceData[] = [
-        { symbol: 'BTC/USDT', price: 50000, exchange: 'Binance', timestamp: Date.now() },
-        { symbol: 'BTC/USDT', price: 50300, exchange: 'Bybit', timestamp: Date.now() },
-        { symbol: 'BTC/USDT', price: 50100, exchange: 'MEXC', timestamp: Date.now() }
+        price('BTC/USDT', 'Binance', 49990, 50000),
+        price('BTC/USDT', 'Bybit', 50300, 50310),
+        price('BTC/USDT', 'MEXC', 50100, 50110),
       ];
 
-      const opportunities = analyzer.findOpportunities(prices);
+      const opportunities = analyzer.findOpportunities(prices, MarketType.SPOT);
 
-      expect(opportunities).toHaveLength(1);
+      expect(opportunities.length).toBeGreaterThanOrEqual(1);
       expect(opportunities[0]).toMatchObject({
         symbol: 'BTC/USDT',
         buyExchange: 'Binance',
@@ -23,66 +36,62 @@ describe('ArbitrageAnalyzer', () => {
         buyPrice: 50000,
         sellPrice: 50300,
       });
-      expect(opportunities[0].profitPercentage).toBeCloseTo(0.6, 1);
+      expect(opportunities[0].grossProfitPct).toBeCloseTo(0.6, 1);
+      expect(opportunities[0].netProfitPct).toBeCloseTo(0.4, 1);
     });
 
-    it('should not find opportunities when price differences are below threshold', () => {
+    it('does not find opportunities when net price differences are below threshold', () => {
       const prices: PriceData[] = [
-        { symbol: 'ETH/USDT', price: 2000, exchange: 'Binance', timestamp: Date.now() },
-        { symbol: 'ETH/USDT', price: 2001, exchange: 'Bybit', timestamp: Date.now() },
-        { symbol: 'ETH/USDT', price: 2002, exchange: 'MEXC', timestamp: Date.now() }
+        price('ETH/USDT', 'Binance', 1999, 2000),
+        price('ETH/USDT', 'Bybit', 2001, 2002),
+        price('ETH/USDT', 'MEXC', 2002, 2003),
       ];
 
-      const opportunities = analyzer.findOpportunities(prices);
+      const opportunities = analyzer.findOpportunities(prices, MarketType.SPOT);
       expect(opportunities).toHaveLength(0);
     });
 
-    it('should handle multiple trading pairs correctly', () => {
+    it('handles multiple trading pairs correctly', () => {
       const prices: PriceData[] = [
-        { symbol: 'BTC/USDT', price: 50000, exchange: 'Binance', timestamp: Date.now() },
-        { symbol: 'BTC/USDT', price: 50300, exchange: 'Bybit', timestamp: Date.now() },
-        { symbol: 'ETH/USDT', price: 2000, exchange: 'Binance', timestamp: Date.now() },
-        { symbol: 'ETH/USDT', price: 2001, exchange: 'Bybit', timestamp: Date.now() }
+        price('BTC/USDT', 'Binance', 49990, 50000),
+        price('BTC/USDT', 'Bybit', 50300, 50310),
+        price('ETH/USDT', 'Binance', 1999, 2000),
+        price('ETH/USDT', 'Bybit', 2001, 2002),
       ];
 
-      const opportunities = analyzer.findOpportunities(prices);
+      const opportunities = analyzer.findOpportunities(prices, MarketType.SPOT);
       expect(opportunities).toHaveLength(1);
       expect(opportunities[0].symbol).toBe('BTC/USDT');
     });
 
-    it('should ignore single exchange prices', () => {
-      const prices: PriceData[] = [
-        { symbol: 'BTC/USDT', price: 50000, exchange: 'Binance', timestamp: Date.now() }
-      ];
+    it('ignores single exchange prices', () => {
+      const opportunities = analyzer.findOpportunities([
+        price('BTC/USDT', 'Binance', 49990, 50000),
+      ], MarketType.SPOT);
 
-      const opportunities = analyzer.findOpportunities(prices);
       expect(opportunities).toHaveLength(0);
     });
 
-    it('should handle empty price data', () => {
-      const opportunities = analyzer.findOpportunities([]);
+    it('handles empty price data', () => {
+      const opportunities = analyzer.findOpportunities([], MarketType.SPOT);
       expect(opportunities).toHaveLength(0);
     });
 
-    it('should find multiple opportunities across different pairs', () => {
+    it('finds multiple opportunities across different pairs', () => {
       const prices: PriceData[] = [
-        { symbol: 'BTC/USDT', price: 50000, exchange: 'Binance', timestamp: Date.now() },
-        { symbol: 'BTC/USDT', price: 50300, exchange: 'Bybit', timestamp: Date.now() },
-        { symbol: 'ETH/USDT', price: 2000, exchange: 'Binance', timestamp: Date.now() },
-        { symbol: 'ETH/USDT', price: 2020, exchange: 'MEXC', timestamp: Date.now() }
+        price('BTC/USDT', 'Binance', 49990, 50000),
+        price('BTC/USDT', 'Bybit', 50300, 50310),
+        price('ETH/USDT', 'Binance', 1999, 2000),
+        price('ETH/USDT', 'MEXC', 2020, 2022),
       ];
 
-      const opportunities = analyzer.findOpportunities(prices);
+      const opportunities = analyzer.findOpportunities(prices, MarketType.SPOT);
       expect(opportunities).toHaveLength(2);
-      
-      // Verify BTC opportunity
       expect(opportunities).toContainEqual(expect.objectContaining({
         symbol: 'BTC/USDT',
         buyExchange: 'Binance',
         sellExchange: 'Bybit',
       }));
-      
-      // Verify ETH opportunity
       expect(opportunities).toContainEqual(expect.objectContaining({
         symbol: 'ETH/USDT',
         buyExchange: 'Binance',

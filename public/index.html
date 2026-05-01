@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -13,20 +13,46 @@
         <header class="mb-8">
             <h1 class="text-4xl font-bold text-center mb-2">Crypto Arbitrage Dashboard</h1>
             <p class="text-gray-400 text-center" id="connection-status">Connecting to server...</p>
+            <p class="text-gray-500 text-center text-sm mt-1" id="bot-settings">Loading settings...</p>
+            <div class="flex justify-center items-center gap-3 mt-4">
+                <button id="refresh-now" class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-semibold transition">Refresh now</button>
+                <span id="refresh-state" class="text-sm text-gray-400">Waiting for status...</span>
+            </div>
         </header>
 
+        <section class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <div class="bg-gray-800 rounded-lg p-4">
+                <div class="text-gray-400 text-sm">Spot opportunities</div>
+                <div id="spot-count" class="text-2xl font-bold">0</div>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-4">
+                <div class="text-gray-400 text-sm">Futures opportunities</div>
+                <div id="futures-count" class="text-2xl font-bold">0</div>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-4">
+                <div class="text-gray-400 text-sm">Common pairs</div>
+                <div class="text-2xl font-bold"><span id="common-spot-pairs">0</span> / <span id="common-futures-pairs">0</span></div>
+                <div class="text-xs text-gray-500">spot / futures</div>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-4">
+                <div class="text-gray-400 text-sm">Last update</div>
+                <div id="global-last-update" class="text-lg font-semibold">Never</div>
+                <div id="cycle-status" class="text-xs text-gray-500 mt-1">Cycle: unknown</div>
+            </div>
+        </section>
+
         <div class="bg-gray-800 rounded-lg shadow-lg p-6 mb-8">
-            <div class="flex justify-between items-center mb-4">
+            <div class="flex flex-col md:flex-row md:justify-between md:items-center mb-4 gap-4">
                 <div class="flex space-x-4">
                     <button id="spot-tab" class="px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold">Spot</button>
                     <button id="futures-tab" class="px-4 py-2 rounded-lg bg-gray-700 text-gray-300 font-semibold">Futures</button>
                 </div>
-                <div class="flex items-center space-x-4">
-                    <span class="text-sm text-gray-400">Last update: 
-                        <span id="spot-last-update" class="hidden">Never</span>
+                <div class="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
+                    <span class="text-sm text-gray-400">Last market update:
+                        <span id="spot-last-update">Never</span>
                         <span id="futures-last-update" class="hidden">Never</span>
                     </span>
-                    <span class="text-sm text-gray-400">Total opportunities: <span id="opportunity-count">0</span></span>
+                    <span class="text-sm text-gray-400">Shown: <span id="opportunity-count">0</span></span>
                 </div>
             </div>
             <div class="overflow-x-auto">
@@ -35,15 +61,40 @@
                         <tr class="text-left text-gray-400 border-b border-gray-700">
                             <th class="py-3 px-4">Symbol</th>
                             <th class="py-3 px-4">Buy Exchange</th>
-                            <th class="py-3 px-4">Buy Price</th>
+                            <th class="py-3 px-4">Buy VWAP</th>
                             <th class="py-3 px-4">Sell Exchange</th>
-                            <th class="py-3 px-4">Sell Price</th>
-                            <th class="py-3 px-4">Profit %</th>
+                            <th class="py-3 px-4">Sell VWAP</th>
+                            <th class="py-3 px-4">Amount</th>
+                            <th class="py-3 px-4">Base</th>
+                            <th class="py-3 px-4">Depth</th>
+                            <th class="py-3 px-4">Gross %</th>
+                            <th class="py-3 px-4">Net %</th>
+                            <th class="py-3 px-4">Market</th>
                             <th class="py-3 px-4">Time</th>
                         </tr>
                     </thead>
                     <tbody id="opportunities-table">
-                        <!-- Opportunities will be inserted here -->
+                        <tr><td colspan="12" class="py-8 text-center text-gray-500">Waiting for opportunities...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="bg-gray-800 rounded-lg shadow-lg p-6">
+            <h2 class="text-xl font-bold mb-4">Exchange status</h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full">
+                    <thead>
+                        <tr class="text-left text-gray-400 border-b border-gray-700">
+                            <th class="py-3 px-4">Exchange</th>
+                            <th class="py-3 px-4">Spot pairs</th>
+                            <th class="py-3 px-4">Futures pairs</th>
+                            <th class="py-3 px-4">Spot prices</th>
+                            <th class="py-3 px-4">Futures prices</th>
+                        </tr>
+                    </thead>
+                    <tbody id="exchange-status-table">
+                        <tr><td colspan="5" class="py-6 text-center text-gray-500">Waiting for status...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -54,10 +105,21 @@
         <tr class="border-b border-gray-700 opportunity-row {{#if isNew}}new-opportunity{{/if}}" data-symbol="{{symbol}}">
             <td class="py-3 px-4 font-medium">{{symbol}}</td>
             <td class="py-3 px-4">{{buyExchange}}</td>
-            <td class="py-3 px-4">${{formatPrice buyPrice}}</td>
+            <td class="py-3 px-4">
+                <div>${{formatPrice buyPrice}}</div>
+                <div class="text-xs text-gray-500">top ${{formatPrice buyTopPrice}} · slip {{formatProfit buySlippagePct}}%</div>
+            </td>
             <td class="py-3 px-4">{{sellExchange}}</td>
-            <td class="py-3 px-4">${{formatPrice sellPrice}}</td>
-            <td class="py-3 px-4 font-medium text-green-400">{{formatProfit profitPercentage}}%</td>
+            <td class="py-3 px-4">
+                <div>${{formatPrice sellPrice}}</div>
+                <div class="text-xs text-gray-500">top ${{formatPrice sellTopPrice}} · slip {{formatProfit sellSlippagePct}}%</div>
+            </td>
+            <td class="py-3 px-4">${{formatAmount tradeAmountUSDT}}</td>
+            <td class="py-3 px-4">{{formatBase executableBaseAmount}}</td>
+            <td class="py-3 px-4 text-gray-400">{{buyLevelsUsed}}/{{sellLevelsUsed}}</td>
+            <td class="py-3 px-4 text-gray-300">{{formatProfit grossProfitPct}}%</td>
+            <td class="py-3 px-4 font-medium text-green-400">{{formatProfit netProfitPct}}%</td>
+            <td class="py-3 px-4 uppercase text-gray-400">{{marketType}}</td>
             <td class="py-3 px-4 text-gray-400">{{formatTime timestamp}}</td>
         </tr>
     </script>
